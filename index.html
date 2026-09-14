@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>轮回分析 Pro</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f7fb;color:#172033;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header{background:#fff;padding:22px 18px 14px;position:sticky;top:0;z-index:2;border-bottom:1px solid #e7ebf0}
+h1{margin:0;font-size:26px}.sub{color:#758095;font-size:13px;margin-top:5px}
+main{max-width:760px;margin:auto;padding:14px}
+.card{background:#fff;border-radius:16px;padding:16px;margin:10px 0;box-shadow:0 2px 12px #dce3ed55}
+.row{display:flex;gap:10px;align-items:center}.between{justify-content:space-between}
+button{border:0;border-radius:12px;padding:12px 16px;font-size:16px;background:#1769d1;color:white}
+button.secondary{background:#e9eef6;color:#24344d}
+.small{font-size:13px;color:#758095}.issue{font-size:20px;font-weight:800}.numbers{font-size:22px;font-weight:800;color:#1769d1;margin-top:6px;word-spacing:7px}
+.output{display:flex;flex-wrap:wrap;gap:8px}.badge{min-width:72px;padding:10px 8px;border-radius:12px;text-align:center;background:#c83f35;color:white;font-weight:800}.wait{background:#6d7888}
+h2{font-size:18px;margin:18px 2px 8px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.z{background:#fff;border-radius:12px;padding:13px 5px;text-align:center;font-weight:700}.hot{background:#fff0ed;color:#b52e25;outline:2px solid #e7a39c}.miss{font-size:13px;color:#788397;margin-top:4px}
+.hist{padding:11px 0;border-bottom:1px solid #edf0f4}.hist:last-child{border:0}.error{color:#b52e25}.ok{color:#2e7d32}
+.modal{position:fixed;inset:0;background:#0008;display:none;align-items:flex-end;z-index:9}.modal.show{display:flex}.sheet{background:white;width:100%;max-height:82vh;overflow:auto;border-radius:20px 20px 0 0;padding:20px}.close{float:right;background:#e9eef6;color:#222}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:9px;border-bottom:1px solid #edf0f4;text-align:left}
+</style>
+</head>
+<body>
+<header><h1>轮回分析 Pro</h1><div class="sub">自动开奖 · 近7期 · 连续未开 · 规则筛选 · 历史回测</div></header>
+<main>
+<div class="card">
+  <div class="row between"><div><div id="issue" class="issue">最新期：--</div><div id="numbers" class="numbers">开奖号码：--</div></div><button id="refresh">刷新</button></div>
+  <div id="status" class="small" style="margin-top:10px">正在连接开奖接口……</div>
+</div>
+
+<h2>本期模型输出</h2>
+<div class="card"><div id="output" class="output"><span class="small">等待数据</span></div></div>
+
+<h2>12生肖连续未开</h2>
+<div id="grid" class="grid"></div>
+
+<h2>最近7期</h2>
+<div class="card" id="history"></div>
+
+<div class="card">
+<h2 style="margin-top:0">历史回测</h2>
+<div class="small">默认回测最近100期。回测每一期时，只使用此前6期数据，再检查该期实际是否开出模型生肖。</div>
+<button id="backtest" style="margin-top:12px">开始回测</button>
+</div>
+
+<div class="card small">
+<b>规则：</b><br>
+6期以上：鼠 牛 虎 兔 龙 蛇 马 羊 鸡 狗 猪<br>
+5期：鸡 猪 狗 牛 马 蛇 兔 龙 鼠<br>
+4期：鸡 马 牛 猪 兔 狗<br>
+3期：马 鸡 猪<br>
+2期：马<br>
+其他：不买，等待时机
+</div>
+</main>
+
+<div id="modal" class="modal"><div class="sheet">
+<button class="close" id="close">关闭</button><h2>最近100期回测</h2><div id="backtestResult"></div>
+</div></div>
+
+<script>
+const Z=["鼠","牛","虎","兔","龙","蛇","马","羊","猴","鸡","狗","猪"];
+const R={6:["鼠","牛","虎","兔","龙","蛇","马","羊","鸡","狗","猪"],5:["鸡","猪","狗","牛","马","蛇","兔","龙","鼠"],4:["鸡","马","牛","猪","兔","狗"],3:["马","鸡","猪"],2:["马"]};
+const api="/api/latest", hist="/api/history?issue=";
+let draws=[];
+const $=id=>document.getElementById(id);
+function norm(s){return ({'龍':'龙','馬':'马','雞':'鸡','豬':'猪'}[s]||s)}
+function record(o){
+  if(o.data&&Array.isArray(o.data))o=o.data[0];
+  else if(o.data&&typeof o.data==='object')o=o.data;
+  const issue=Number(String(o.expect||o.issue||'').replace(/\D/g,'')); 
+  const z=String(o.zodiac||'').split(/[,，\s]+/).map(x=>norm(x.trim())).filter(Boolean);
+  return {issue,code:o.openCode||'',zodiac:new Set(z)};
+}
+async function getJson(u){let r=await fetch(u);if(!r.ok)throw Error("HTTP "+r.status);return r.json()}
+async function load(){
+  $("refresh").disabled=true;$("status").textContent="正在查询最新一期及最近7期……";
+  try{
+    const latest=record(await getJson(api)), arr=[];
+    for(let i=latest.issue-6;i<=latest.issue;i++){try{arr.push(record(await getJson(hist+i)))}catch(e){}}
+    arr.sort((a,b)=>a.issue-b.issue); if(!arr.length)throw Error("没有历史数据");
+    draws=arr; render(); $("status").textContent="已更新 · "+arr.length+"期";
+  }catch(e){$("status").innerHTML='<span class="error">查询失败：'+e.message+"</span>"}finally{$("refresh").disabled=false}
+}
+function streaks(ds){
+  const m={};for(const z of Z){let n=0;for(let i=ds.length-1;i>=0;i--){if(ds[i].zodiac.has(z))break;n++}m[z]=n}return m
+}
+function select(s){const a=[];for(const z of Z){let n=s[z];if(n>=6&&R[6].includes(z))a.push({z,n,r:6});else if(n==5&&R[5].includes(z))a.push({z,n,r:5});else if(n==4&&R[4].includes(z))a.push({z,n,r:4});else if(n==3&&R[3].includes(z))a.push({z,n,r:3});else if(n==2&&R[2].includes(z))a.push({z,n,r:2})}return a}
+function render(){
+ const d=draws[draws.length-1],s=streaks(draws),sel=select(s), hot=new Set(sel.map(x=>x.z));
+ $("issue").textContent="第"+d.issue+"期";$("numbers").textContent="开奖号码："+d.code.replaceAll(",","  ");
+ $("output").innerHTML=sel.length?sel.map(x=>`<span class="badge">${x.z}<br>${x.n}期</span>`).join(""):'<span class="badge wait">不买<br>等待时机</span>';
+ $("grid").innerHTML=Z.map(z=>`<div class="z ${hot.has(z)?"hot":""}">${z}<div class="miss">${s[z]}期${hot.has(z)?" · 命中规则":""}</div></div>`).join("");
+ $("history").innerHTML=draws.slice().reverse().map(x=>`<div class="hist"><b>第${x.issue}期</b>　${x.code}<br><span class="small">${[...x.zodiac].join("、")}</span></div>`).join("");
+}
+function pct(a,b){return b?(a/b*100).toFixed(2)+"%":"—"}
+async function doBacktest(){
+ $("backtest").disabled=true;$("backtest").textContent="回测中……";
+ try{
+  const latest=draws.at(-1)?.issue || record(await getJson(api)).issue, start=Math.max(7,latest-100), all=[];
+  for(let i=start;i<=latest;i++){try{all.push(record(await getJson(hist+i)))}catch(e){}}
+  all.sort((a,b)=>a.issue-b.issue);let T=0,H=0,t=[0,0,0,0,0,0,0],h=[0,0,0,0,0,0,0];
+  for(let i=6;i<all.length;i++){const s=streaks(all.slice(i-6,i)),sel=select(s);if(!sel.length)continue;T++;if(sel.some(x=>all[i].zodiac.has(x.z)))H++;for(const r of [2,3,4,5,6]){let v=sel.filter(x=>x.r==r);if(v.length){t[r]++;if(v.some(x=>all[i].zodiac.has(x.z)))h[r]++}}}
+  let html=`<p>总触发：<b>${T}</b> 次<br>总命中：<b>${H}</b> 次<br>总体命中率：<b>${pct(H,T)}</b></p><table><tr><th>档位</th><th>触发</th><th>命中</th><th>命中率</th></tr>`;
+  for(let r=2;r<=6;r++)html+=`<tr><td>${r}期档</td><td>${t[r]}</td><td>${h[r]}</td><td>${pct(h[r],t[r])}</td></tr>`;
+  $("backtestResult").innerHTML=html+"</table>";$("modal").classList.add("show");
+ }catch(e){alert("回测失败："+e.message)}finally{$("backtest").disabled=false;$("backtest").textContent="开始回测"}
+}
+$("refresh").onclick=load;$("backtest").onclick=doBacktest;$("close").onclick=()=>$("modal").classList.remove("show");
+load();
+</script>
+</body></html>
