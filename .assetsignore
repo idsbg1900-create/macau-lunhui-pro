@@ -1,1 +1,11 @@
-
+node_modules/
+src/
+functions/
+API/
+wrangler.json
+wrangler.jsonc
+vercel.json
+package.json
+README*
+.git/
+.gitignore
