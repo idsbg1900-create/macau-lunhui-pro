@@ -88,12 +88,12 @@ function streaks(ds){
   const m={};for(const z of Z){let n=0;for(let i=ds.length-1;i>=0;i--){if(ds[i].zodiac.has(z))break;n++}m[z]=n}return m
 }
 function select(s){const a=[];for(const z of Z){let n=s[z];if(n>=6&&R[6].includes(z))a.push({z,n,r:6});else if(n==5&&R[5].includes(z))a.push({z,n,r:5});else if(n==4&&R[4].includes(z))a.push({z,n,r:4});else if(n==3&&R[3].includes(z))a.push({z,n,r:3});else if(n==2&&R[2].includes(z))a.push({z,n,r:2})}return a}
-function render(){
- const d=draws[draws.length-1],s=streaks(draws),sel=select(s), hot=new Set(sel.map(x=>x.z));
- $("issue").textContent="第"+d.issue+"期";$("numbers").textContent="开奖号码："+d.code.replaceAll(",","  ");
- $("output").innerHTML=sel.length?sel.map(x=>`<span class="badge">${x.z}<br>${x.n}期</span>`).join(""):'<span class="badge wait">不买<br>等待时机</span>';
- $("grid").innerHTML=Z.map(z=>`<div class="z ${hot.has(z)?"hot":""}">${z}<div class="miss">${s[z]}期${hot.has(z)?" · 命中规则":""}</div></div>`).join("");
- $("history").innerHTML=draws.slice().reverse().map(x=>`<div class="hist"><b>第${x.issue}期</b>　${x.code}<br><span class="small">${[...x.zodiac].join("、")}</span></div>`).join("");
+function record(o){
+  if(o.data&&Array.isArray(o.data))o=o.data[0];
+  else if(o.data&&typeof o.data==='object')o=o.data;
+  const issue=String(o.expect||o.issue||'').replace(/\D/g,'');
+  const z=String(o.zodiac||'').split(/[,，\s]+/).map(x=>norm(x.trim())).filter(Boolean);
+  return {issue,code:o.openCode||'',zodiac:new Set(z)};
 }
 function pct(a,b){return b?(a/b*100).toFixed(2)+"%":"—"}
 async function doBacktest(){
